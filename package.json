@@ -1,0 +1,23 @@
+{
+  "name": "ecommerce-server-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Md Yousuf",
+  "license": "ISC",
+  "description": "Ecommerce server app",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.6",
+    "express": "^4.21.2",
+    "mongodb": "^6.13.1",
+    "multer": "^1.4.5-lts.1"
+  }
+}
