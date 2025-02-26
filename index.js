@@ -148,7 +148,6 @@ async function run() {
       console.log("Successfully connected to MongoDB!");
    } catch (error) {
       console.error("Connection error:", error);
-      process.exit(1); // Exit process on connection failure
    }
 }
 
