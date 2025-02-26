@@ -7,16 +7,13 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 
-// set the view engine to ejs
-app.set('view engine', 'ejs');
-
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Use environment variables in production for sensitive data
-const uri = `mongodb+srv://onlineokk:dcZScy5J0vgl66Wh@ecommerce-sercer.t7lnc.mongodb.net/?retryWrites=true&w=majority&appName=ecommerce-sercer`;
 
+const uri = "mongodb+srv://onlineokk:dcZScy5J0vgl66Wh@ecommerce-sercer.t7lnc.mongodb.net/?retryWrites=true&w=majority&appName=ecommerce-sercer"
 // Create a MongoClient with options to set the Stable API version
 const client = new MongoClient(uri, {
    serverApi: {
@@ -28,8 +25,8 @@ const client = new MongoClient(uri, {
 
 // -------------------
 // Multer configuration
-// -------------------
-const storage = multer.diskStorage({
+// ------------------- 
+const storage = multer.memoryStorage({
    destination: (req, file, cb) => {
       cb(null, "uploads/");
    },
@@ -73,7 +70,7 @@ async function run() {
 
 
       app.get('/', (req, res) => {
-         res.render('home', { name: 'Home Page' });
+         res.send('Welcome to the E-commerce API');
       });
 
       // Get all products
