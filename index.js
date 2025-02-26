@@ -5,6 +5,8 @@ const multer = require("multer");
 const path = require("path");
 const app = express();
 const port = process.env.PORT || 5000;
+require('dotenv').config();
+
 
 // set the view engine to ejs
 app.set('view engine', 'ejs');
@@ -14,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // Use environment variables in production for sensitive data
-const uri = "mongodb+srv://onlineokk:dcZScy5J0vgl66Wh@ecommerce-sercer.t7lnc.mongodb.net/?retryWrites=true&w=majority&appName=ecommerce-sercer";
+const uri = `mongodb+srv://onlineokk:dcZScy5J0vgl66Wh@ecommerce-sercer.t7lnc.mongodb.net/?retryWrites=true&w=majority&appName=ecommerce-sercer`;
 
 // Create a MongoClient with options to set the Stable API version
 const client = new MongoClient(uri, {
