@@ -6,6 +6,7 @@ const path = require("path");
 const app = express();
 const port = process.env.PORT || 5000;
 const dotenv = require('dotenv')
+dotenv.config();
 
 // Middleware
 app.use(cors());
@@ -13,7 +14,7 @@ app.use(express.json());
 
 // Use environment variables in production for sensitive data
 
-const uri = dotenv.config().parsed.URL
+const uri = process.env.URL
 // Create a MongoClient with options to set the Stable API version
 const client = new MongoClient(uri, {
    serverApi: {
@@ -147,4 +148,4 @@ async function run() {
    }
 }
 
-run();
+run().catch(console.error);
