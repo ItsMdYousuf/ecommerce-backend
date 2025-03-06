@@ -3,19 +3,20 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+const dotenv = require("dotenv");
+
+dotenv.config();
+
 const app = express();
 const port = process.env.PORT || 5000;
-const dotenv = require('dotenv')
-dotenv.config();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Use environment variables in production for sensitive data
-
-const uri = process.env.URL
-// Create a MongoClient with options to set the Stable API version
+// MongoDB Connection
+const uri = process.env.NEW_URL;
 const client = new MongoClient(uri, {
    serverApi: {
       version: ServerApiVersion.v1,
@@ -24,10 +25,16 @@ const client = new MongoClient(uri, {
    },
 });
 
+// Ensure 'uploads' directory exists
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+   fs.mkdirSync(uploadDir);
+}
+
 // -------------------
-// Multer configuration
+// Multer Configuration
 // ------------------- 
-const storage = multer.memoryStorage({
+const storage = multer.diskStorage({
    destination: (req, file, cb) => {
       cb(null, "uploads/");
    },
@@ -37,7 +44,7 @@ const storage = multer.memoryStorage({
    },
 });
 
-// File filter to only allow images
+// File filter for images only
 const fileFilter = (req, file, cb) => {
    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
@@ -53,28 +60,27 @@ const upload = multer({
 });
 
 // -------------------
-// End of Multer config
+// End of Multer Config
 // -------------------
 
+// Async Function to Run Server
 async function run() {
    try {
-      // Connect the client to the server
       await client.connect();
 
-      // Get database and collection references
       const database = client.db("insertDB");
       const productsCollection = database.collection("collectionProduct");
       const slidersCollection = database.collection("sliders");
 
-      // Serve static files from the 'public' directory
+      // Serve static files
       app.use(express.static(path.join(__dirname, "public")));
+      app.use("/uploads", express.static(uploadDir));
 
-
-      app.get('/', (req, res) => {
-         res.send('Welcome to the E-commerce API');
+      // Routes
+      app.get("/", (req, res) => {
+         res.sendFile(path.join(__dirname, "home.html"));
       });
 
-      // Get all products
       app.get("/products", async (req, res) => {
          try {
             const products = await productsCollection.find({}).toArray();
@@ -85,7 +91,6 @@ async function run() {
          }
       });
 
-      // Get all slider images
       app.get("/sliders", async (req, res) => {
          try {
             const sliders = await slidersCollection.find({}).toArray();
@@ -96,7 +101,7 @@ async function run() {
          }
       });
 
-      // Endpoint for slider image upload
+      // Upload Slider Image
       app.post("/sliders", upload.single("sliderImage"), async (req, res) => {
          try {
             const newSlider = {
@@ -115,7 +120,7 @@ async function run() {
          }
       });
 
-      // Single endpoint for product creation with image upload
+      // Upload Product Image
       app.post("/products", upload.single("productImage"), async (req, res) => {
          try {
             const newProduct = {
@@ -134,10 +139,12 @@ async function run() {
          }
       });
 
-      // Serve static files from the 'uploads' directory
-      app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+      // 404 Handler (Should be the last middleware)
+      app.use((req, res) => {
+         res.status(404).sendFile(path.join(__dirname, "404.html"));
+      });
 
-      // Start server
+      // Start Server
       app.listen(port, () => {
          console.log(`Server is running at http://localhost:${port}`);
       });
