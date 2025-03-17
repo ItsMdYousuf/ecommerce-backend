@@ -1,5 +1,5 @@
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
@@ -71,6 +71,7 @@ async function run() {
       const database = client.db("insertDB");
       const productsCollection = database.collection("collectionProduct");
       const slidersCollection = database.collection("sliders");
+      const categoriesCollection = database.collection("categories");
 
       // Serve static files
       app.use(express.static(path.join(__dirname, "public")));
@@ -121,6 +122,7 @@ async function run() {
       });
 
       // Upload Product Image
+      app.use('/uploads', express.static('uploads'));
       app.post("/products", upload.single("productImage"), async (req, res) => {
          try {
             const newProduct = {
@@ -136,6 +138,139 @@ async function run() {
          } catch (error) {
             console.error(error);
             res.status(400).json({ error: "Bad request" });
+         }
+      });
+
+      // Delete a product
+      app.delete('/products/:id', async (req, res) => {
+         try {
+            const result = await productsCollection.deleteOne(
+               { _id: new ObjectId(req.params.id) }
+            );
+
+            if (result.deletedCount === 0) {
+               return res.status(404).json({ error: 'Product not found' });
+            }
+            res.json({ message: 'Product deleted successfully' });
+         } catch (error) {
+            res.status(400).json({ error: 'Deletion failed' });
+         }
+      });
+
+      // product manage actions
+      app.patch('/:id', async (req, res) => {
+         try {
+            const product = await productsCollection.findByIdAndUpdate(
+               req.params.id,
+               { status: req.body.status },
+               { new: true }
+            );
+            res.json(product);
+         } catch (err) {
+            res.status(400).json({ message: err.message });
+         }
+      });
+
+      // Update a single product
+      app.get('/products/:id', async (req, res) => {
+         try {
+            const product = await productsCollection.findOne({
+               _id: new ObjectId(req.params.id)
+            });
+            if (!product) {
+               return res.status(404).json({ error: 'Product not found' });
+            }
+            res.json(product);
+         } catch (error) {
+            res.status(400).json({ error: 'Failed to fetch product' });
+         }
+      });
+
+
+      // Bulk update products
+      app.patch('/products/bulk', async (req, res) => {
+         try {
+            const { ids, status } = req.body;
+            const objectIds = ids.map(id => new ObjectId(id));
+
+            const result = await productsCollection.updateMany(
+               { _id: { $in: objectIds } },
+               { $set: { status: status } }
+            );
+
+            res.json({
+               matchedCount: result.matchedCount,
+               modifiedCount: result.modifiedCount
+            });
+         } catch (error) {
+            res.status(400).json({ error: 'Bulk update failed' });
+         }
+      });
+
+      // Category CRUD Endpoints
+      app.get('/categories', async (req, res) => {
+         try {
+            const categories = await categoriesCollection.find({}).toArray();
+            res.json(categories);
+         } catch (error) {
+            res.status(500).json({ error: 'Failed to fetch categories' });
+         }
+      });
+
+      app.post('/categories', upload.single('image'), async (req, res) => {
+         try {
+            const newCategory = {
+               name: req.body.name,
+               slug: req.body.slug,
+               description: req.body.description,
+               image: req.file ? `/uploads/${req.file.filename}` : null,
+               createdAt: new Date(),
+               updatedAt: new Date()
+            };
+
+            const result = await categoriesCollection.insertOne(newCategory);
+            res.status(201).json({ ...newCategory, _id: result.insertedId });
+         } catch (error) {
+            res.status(400).json({ error: 'Category creation failed' });
+         }
+      });
+
+      app.put('/categories/:id', upload.single('image'), async (req, res) => {
+         try {
+            const updateData = {
+               ...req.body,
+               updatedAt: new Date()
+            };
+
+            if (req.file) {
+               updateData.image = `/uploads/${req.file.filename}`;
+            }
+
+            const result = await categoriesCollection.updateOne(
+               { _id: new ObjectId(req.params.id) },
+               { $set: updateData }
+            );
+
+            if (result.modifiedCount === 0) {
+               return res.status(404).json({ error: 'Category not found' });
+            }
+            res.json({ message: 'Category updated successfully' });
+         } catch (error) {
+            res.status(400).json({ error: 'Update failed' });
+         }
+      });
+
+      app.delete('/categories/:id', async (req, res) => {
+         try {
+            const result = await categoriesCollection.deleteOne(
+               { _id: new ObjectId(req.params.id) }
+            );
+            if (result.deletedCount === 0) {
+               return res.status(404).json({ error: 'Category not found' });
+            }
+            res.json({ message: 'Category deleted successfully' });
+         } catch (error) {
+            res.status(400).json({ error: 'Deletion failed' });
          }
       });
 
