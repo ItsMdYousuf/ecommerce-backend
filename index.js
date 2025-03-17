@@ -274,11 +274,6 @@ async function run() {
          }
       });
 
-      // 404 Handler (Should be the last middleware)
-      app.use((req, res) => {
-         res.status(404).sendFile(path.join(__dirname, "404.html"));
-      });
-
       // Start Server
       app.listen(port, () => {
          console.log(`Server is running at http://localhost:${port}`);
