@@ -5,7 +5,6 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const dotenv = require("dotenv");
-
 dotenv.config();
 
 const app = express();
@@ -33,13 +32,14 @@ if (!fs.existsSync(uploadDir)) {
 
 // -------------------
 // Multer Configuration
-// ------------------- 
+// -------------------
 const storage = multer.diskStorage({
    destination: (req, file, cb) => {
       cb(null, "uploads/");
    },
    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const uniqueSuffix =
+         Date.now() + "-" + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + path.extname(file.originalname));
    },
 });
@@ -63,6 +63,9 @@ const upload = multer({
 // End of Multer Config
 // -------------------
 
+// Serve static files for uploaded images (only once)
+app.use("/uploads", express.static(uploadDir));
+
 // Async Function to Run Server
 async function run() {
    try {
@@ -73,11 +76,8 @@ async function run() {
       const slidersCollection = database.collection("sliders");
       const categoriesCollection = database.collection("categories");
 
-      // Serve static files
+      // Serve home page and public static files
       app.use(express.static(path.join(__dirname, "public")));
-      app.use("/uploads", express.static(uploadDir));
-
-      // Routes
       app.get("/", (req, res) => {
          res.sendFile(path.join(__dirname, "home.html"));
       });
@@ -111,18 +111,56 @@ async function run() {
             };
 
             const result = await slidersCollection.insertOne(newSlider);
-            res.status(201).json({
-               ...result,
-               image: newSlider.image,
+            // Fetch the newly inserted document
+            const insertedSlider = await slidersCollection.findOne({
+               _id: result.insertedId,
             });
+            res.status(201).json(insertedSlider);
          } catch (error) {
-            console.error(error);
-            res.status(400).json({ error: "Bad request" });
+            console.error("Slider upload error:", error);
+            res
+               .status(400)
+               .json({ error: error.message || "Bad request" });
+         }
+      });
+
+      // Delete slider endpoint
+      app.delete("/sliders/:id", async (req, res) => {
+         try {
+            const slider = await slidersCollection.findOne({
+               _id: new ObjectId(req.params.id),
+            });
+
+            if (!slider)
+               return res.status(404).json({ error: "Slider not found" });
+
+            // Delete associated image file correctly
+            if (slider.image) {
+               const filename = path.basename(slider.image); // Get filename from URL
+               const imagePath = path.join(uploadDir, filename);
+               fs.unlink(imagePath, (err) => {
+                  if (err) console.error("Error deleting image:", err);
+               });
+            }
+
+            const result = await slidersCollection.deleteOne({
+               _id: new ObjectId(req.params.id),
+            });
+
+            if (result.deletedCount === 0) {
+               return res
+                  .status(404)
+                  .json({ error: "Slider not found" });
+            }
+
+            res.json({ message: "Slider deleted successfully" });
+         } catch (error) {
+            console.error("Delete error:", error);
+            res.status(500).json({ error: "Internal server error" });
          }
       });
 
       // Upload Product Image
-      app.use('/uploads', express.static('uploads'));
       app.post("/products", upload.single("productImage"), async (req, res) => {
          try {
             const newProduct = {
@@ -142,23 +180,25 @@ async function run() {
       });
 
       // Delete a product
-      app.delete('/products/:id', async (req, res) => {
+      app.delete("/products/:id", async (req, res) => {
          try {
-            const result = await productsCollection.deleteOne(
-               { _id: new ObjectId(req.params.id) }
-            );
+            const result = await productsCollection.deleteOne({
+               _id: new ObjectId(req.params.id),
+            });
 
             if (result.deletedCount === 0) {
-               return res.status(404).json({ error: 'Product not found' });
+               return res
+                  .status(404)
+                  .json({ error: "Product not found" });
             }
-            res.json({ message: 'Product deleted successfully' });
+            res.json({ message: "Product deleted successfully" });
          } catch (error) {
-            res.status(400).json({ error: 'Deletion failed' });
+            res.status(400).json({ error: "Deletion failed" });
          }
       });
 
       // product manage actions
-      app.patch('/:id', async (req, res) => {
+      app.patch("/:id", async (req, res) => {
          try {
             const product = await productsCollection.findByIdAndUpdate(
                req.params.id,
@@ -172,26 +212,27 @@ async function run() {
       });
 
       // Update a single product
-      app.get('/products/:id', async (req, res) => {
+      app.get("/products/:id", async (req, res) => {
          try {
             const product = await productsCollection.findOne({
-               _id: new ObjectId(req.params.id)
+               _id: new ObjectId(req.params.id),
             });
             if (!product) {
-               return res.status(404).json({ error: 'Product not found' });
+               return res
+                  .status(404)
+                  .json({ error: "Product not found" });
             }
             res.json(product);
          } catch (error) {
-            res.status(400).json({ error: 'Failed to fetch product' });
+            res.status(400).json({ error: "Failed to fetch product" });
          }
       });
 
-
       // Bulk update products
-      app.patch('/products/bulk', async (req, res) => {
+      app.patch("/products/bulk", async (req, res) => {
          try {
             const { ids, status } = req.body;
-            const objectIds = ids.map(id => new ObjectId(id));
+            const objectIds = ids.map((id) => new ObjectId(id));
 
             const result = await productsCollection.updateMany(
                { _id: { $in: objectIds } },
@@ -200,77 +241,100 @@ async function run() {
 
             res.json({
                matchedCount: result.matchedCount,
-               modifiedCount: result.modifiedCount
+               modifiedCount: result.modifiedCount,
             });
          } catch (error) {
-            res.status(400).json({ error: 'Bulk update failed' });
+            res.status(400).json({ error: "Bulk update failed" });
          }
       });
 
       // Category CRUD Endpoints
-      app.get('/categories', async (req, res) => {
+      app.get("/categories", async (req, res) => {
          try {
             const categories = await categoriesCollection.find({}).toArray();
             res.json(categories);
          } catch (error) {
-            res.status(500).json({ error: 'Failed to fetch categories' });
+            res
+               .status(500)
+               .json({ error: "Failed to fetch categories" });
          }
       });
 
-      app.post('/categories', upload.single('image'), async (req, res) => {
-         try {
-            const newCategory = {
-               name: req.body.name,
-               slug: req.body.slug,
-               description: req.body.description,
-               image: req.file ? `/uploads/${req.file.filename}` : null,
-               createdAt: new Date(),
-               updatedAt: new Date()
-            };
+      app.post(
+         "/categories",
+         upload.single("image"),
+         async (req, res) => {
+            try {
+               const newCategory = {
+                  name: req.body.name,
+                  slug: req.body.slug,
+                  description: req.body.description,
+                  image: req.file ? `/uploads/${req.file.filename}` : null,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+               };
 
-            const result = await categoriesCollection.insertOne(newCategory);
-            res.status(201).json({ ...newCategory, _id: result.insertedId });
-         } catch (error) {
-            res.status(400).json({ error: 'Category creation failed' });
-         }
-      });
-
-      app.put('/categories/:id', upload.single('image'), async (req, res) => {
-         try {
-            const updateData = {
-               ...req.body,
-               updatedAt: new Date()
-            };
-
-            if (req.file) {
-               updateData.image = `/uploads/${req.file.filename}`;
+               const result = await categoriesCollection.insertOne(
+                  newCategory
+               );
+               res.status(201).json({
+                  ...newCategory,
+                  _id: result.insertedId,
+               });
+            } catch (error) {
+               res
+                  .status(400)
+                  .json({ error: "Category creation failed" });
             }
-
-            const result = await categoriesCollection.updateOne(
-               { _id: new ObjectId(req.params.id) },
-               { $set: updateData }
-            );
-
-            if (result.modifiedCount === 0) {
-               return res.status(404).json({ error: 'Category not found' });
-            }
-            res.json({ message: 'Category updated successfully' });
-         } catch (error) {
-            res.status(400).json({ error: 'Update failed' });
          }
-      });
+      );
 
-      app.delete('/categories/:id', async (req, res) => {
+      app.put(
+         "/categories/:id",
+         upload.single("image"),
+         async (req, res) => {
+            try {
+               const updateData = {
+                  ...req.body,
+                  updatedAt: new Date(),
+               };
+
+               if (req.file) {
+                  updateData.image = `/uploads/${req.file.filename}`;
+               }
+
+               const result = await categoriesCollection.updateOne(
+                  { _id: new ObjectId(req.params.id) },
+                  { $set: updateData }
+               );
+
+               if (result.modifiedCount === 0) {
+                  return res
+                     .status(404)
+                     .json({ error: "Category not found" });
+               }
+               res.json({
+                  message: "Category updated successfully",
+               });
+            } catch (error) {
+               res.status(400).json({ error: "Update failed" });
+            }
+         }
+      );
+
+      app.delete("/categories/:id", async (req, res) => {
          try {
-            const result = await categoriesCollection.deleteOne(
-               { _id: new ObjectId(req.params.id) }
-            );
+            const result = await categoriesCollection.deleteOne({
+               _id: new ObjectId(req.params.id),
+            });
             if (result.deletedCount === 0) {
-               return res.status(404).json({ error: 'Category not found' });
+               return res
+                  .status(404)
+                  .json({ error: "Category not found" });
             }
-            res.json({ message: 'Category deleted successfully' });
+            res.json({ message: "Category deleted successfully" });
          } catch (error) {
-            res.status(400).json({ error: 'Deletion failed' });
+            res.status(400).json({ error: "Deletion failed" });
          }
       });
 
