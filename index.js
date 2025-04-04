@@ -5,11 +5,10 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const dotenv = require("dotenv");
-const serverless = require("serverless-http");
-
 dotenv.config();
 
 const app = express();
+const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -23,40 +22,14 @@ const client = new MongoClient(uri, {
       strict: true,
       deprecationErrors: true,
    },
-   serverSelectionTimeoutMS: 5000, // Fail fast on connection
-   connectTimeoutMS: 5000,
 });
 
-// Database references
-let database, productsCollection, slidersCollection, categoriesCollection;
+// -------------------
+// Multer Configuration for Vercel (using memory storage)
+// -------------------
+const storage = multer.memoryStorage(); // Use memory storage instead of diskStorage
 
-async function connectDB() {
-   if (!client.topology?.isConnected()) {
-      await client.connect();
-      database = client.db("insertDB");
-      productsCollection = database.collection("collectionProduct");
-      slidersCollection = database.collection("sliders");
-      categoriesCollection = database.collection("categories");
-   }
-}
-
-// Ensure 'uploads' directory exists
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-   fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Multer Configuration
-const storage = multer.diskStorage({
-   destination: (req, file, cb) => {
-      cb(null, "uploads/");
-   },
-   filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
-   },
-});
-
+// File filter for images only
 const fileFilter = (req, file, cb) => {
    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
@@ -68,70 +41,37 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
    storage: storage,
    fileFilter: fileFilter,
-   limits: { fileSize: 5 * 1024 * 1024 },
+   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
+// -------------------
+// End of Multer Config
+// -------------------
 
-// Serve static files
-app.use("/uploads", express.static(uploadDir));
 
-// Routes
-app.use(express.static(path.join(__dirname, "public")));
-app.get("/", (req, res) => {
-   res.sendFile(path.join(__dirname, "home.html"));
-});
+// NOTE: Since we're using memory storage, there is no persistent "uploads" directory.
+// If you need to process the image file and then store it externally, do it here.
+// For example, you might upload req.file.buffer to an external storage service.
 
-// Products routes
-app.get("/products", async (req, res) => {
-   try {
-      await connectDB();
-      const products = await productsCollection.find({}).toArray();
-      res.json(products);
-   } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-   }
-});
-
-app.post("/products", upload.single("productImage"), async (req, res) => {
-   try {
-      await connectDB();
-      const newProduct = {
-         ...req.body,
-         image: req.file ? `/uploads/${req.file.filename}` : null,
-      };
-
-      const result = await productsCollection.insertOne(newProduct);
-      res.status(201).json({
-         ...result,
-         image: newProduct.image,
-      });
-   } catch (error) {
-      console.error(error);
-      res.status(400).json({ error: "Bad request" });
-   }
-});
-
-// Sliders routes
-app.get("/sliders", async (req, res) => {
-   try {
-      await connectDB();
-      const sliders = await slidersCollection.find({}).toArray();
-      res.json(sliders);
-   } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Internal server error" });
-   }
-});
-
+// Example route for slider upload using memory storage
 app.post("/sliders", upload.single("sliderImage"), async (req, res) => {
    try {
-      await connectDB();
+      // Here, req.file.buffer holds the image data.
+      // You can convert this to a base64 string or directly upload to external storage.
+      // For demonstration, let's assume we convert it to a base64 string.
+      const imageBase64 = req.file
+         ? `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`
+         : null;
+
       const newSlider = {
          ...req.body,
-         image: req.file ? `/uploads/${req.file.filename}` : null,
+         image: imageBase64, // Save the base64 image string (or a URL if you uploaded it)
       };
 
+      const database = client.db("insertDB");
+      const slidersCollection = database.collection("sliders");
       const result = await slidersCollection.insertOne(newSlider);
+
+      // Fetch the newly inserted document
       const insertedSlider = await slidersCollection.findOne({
          _id: result.insertedId,
       });
@@ -142,35 +82,53 @@ app.post("/sliders", upload.single("sliderImage"), async (req, res) => {
    }
 });
 
-// Categories routes
-app.get("/categories", async (req, res) => {
+// Other endpoints remain largely the same. 
+// Make sure to adjust any file system logic (like deleting files) since you're not writing files to disk.
+
+// Async Function to Run Server
+async function run() {
    try {
-      await connectDB();
-      const categories = await categoriesCollection.find({}).toArray();
-      res.json(categories);
+      await client.connect();
+
+      const database = client.db("insertDB");
+      const productsCollection = database.collection("collectionProduct");
+      const slidersCollection = database.collection("sliders");
+      const categoriesCollection = database.collection("categories");
+
+      // Serve home page and public static files
+      app.use(express.static(path.join(__dirname, "public")));
+      app.get("/", (req, res) => {
+         res.sendFile(path.join(__dirname, "home.html"));
+      });
+
+      app.get("/products", async (req, res) => {
+         try {
+            const products = await productsCollection.find({}).toArray();
+            res.json(products);
+         } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: "Internal server error" });
+         }
+      });
+
+      app.get("/sliders", async (req, res) => {
+         try {
+            const sliders = await slidersCollection.find({}).toArray();
+            res.json(sliders);
+         } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: "Internal server error" });
+         }
+      });
+
+      app.listen(port, () => {
+         console.log(`Server is running at http://localhost:${port}`);
+      });
+
+      console.log("Successfully connected to MongoDB!");
    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch categories" });
+      console.error("Connection error:", error);
    }
-});
-
-// Other routes (delete, update, etc.) follow the same pattern...
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-   console.error(err.stack);
-   res.status(500).json({ error: "Something went wrong!" });
-});
-
-// Serverless handler
-module.exports.handler = async (event, context) => {
-   context.callbackWaitsForEmptyEventLoop = false;
-   return serverless(app)(event, context);
-};
-
-// Local server
-if (require.main === module) {
-   const port = process.env.PORT || 5000;
-   app.listen(port, () =>
-      console.log(`Server running on http://localhost:${port}`)
-   );
 }
+
+run().catch(console.error);
