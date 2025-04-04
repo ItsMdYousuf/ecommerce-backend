@@ -5,10 +5,11 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const dotenv = require("dotenv");
+const serverless = require("serverless-http");
+
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -38,8 +39,7 @@ const storage = multer.diskStorage({
       cb(null, "uploads/");
    },
    filename: (req, file, cb) => {
-      const uniqueSuffix =
-         Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + path.extname(file.originalname));
    },
 });
@@ -59,29 +59,25 @@ const upload = multer({
    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
-// -------------------
-// End of Multer Config
-// -------------------
-
-// Serve static files for uploaded images (only once)
+// Serve static files for uploaded images
 app.use("/uploads", express.static(uploadDir));
 
-// Async Function to Run Server
+// Async function to set up routes after connecting to MongoDB
 async function run() {
    try {
       await client.connect();
-
       const database = client.db("insertDB");
       const productsCollection = database.collection("collectionProduct");
       const slidersCollection = database.collection("sliders");
       const categoriesCollection = database.collection("categories");
 
-      // Serve home page and public static files
+      // Serve home page and public static files (if needed)
       app.use(express.static(path.join(__dirname, "public")));
       app.get("/", (req, res) => {
          res.sendFile(path.join(__dirname, "home.html"));
       });
 
+      // Get all products
       app.get("/products", async (req, res) => {
          try {
             const products = await productsCollection.find({}).toArray();
@@ -92,6 +88,7 @@ async function run() {
          }
       });
 
+      // Get all sliders
       app.get("/sliders", async (req, res) => {
          try {
             const sliders = await slidersCollection.find({}).toArray();
@@ -118,9 +115,7 @@ async function run() {
             res.status(201).json(insertedSlider);
          } catch (error) {
             console.error("Slider upload error:", error);
-            res
-               .status(400)
-               .json({ error: error.message || "Bad request" });
+            res.status(400).json({ error: error.message || "Bad request" });
          }
       });
 
@@ -134,7 +129,7 @@ async function run() {
             if (!slider)
                return res.status(404).json({ error: "Slider not found" });
 
-            // Delete associated image file correctly
+            // Delete associated image file if it exists
             if (slider.image) {
                const filename = path.basename(slider.image); // Get filename from URL
                const imagePath = path.join(uploadDir, filename);
@@ -148,9 +143,7 @@ async function run() {
             });
 
             if (result.deletedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Slider not found" });
+               return res.status(404).json({ error: "Slider not found" });
             }
 
             res.json({ message: "Slider deleted successfully" });
@@ -187,9 +180,7 @@ async function run() {
             });
 
             if (result.deletedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Product not found" });
+               return res.status(404).json({ error: "Product not found" });
             }
             res.json({ message: "Product deleted successfully" });
          } catch (error) {
@@ -197,30 +188,30 @@ async function run() {
          }
       });
 
-      // product manage actions
+      // Product manage actions (example using PATCH)
       app.patch("/:id", async (req, res) => {
          try {
-            const product = await productsCollection.findByIdAndUpdate(
-               req.params.id,
-               { status: req.body.status },
-               { new: true }
+            // Note: MongoDB's native driver does not have findByIdAndUpdate.
+            // Use findOneAndUpdate instead.
+            const result = await productsCollection.findOneAndUpdate(
+               { _id: new ObjectId(req.params.id) },
+               { $set: { status: req.body.status } },
+               { returnDocument: "after" }
             );
-            res.json(product);
+            res.json(result.value);
          } catch (err) {
             res.status(400).json({ message: err.message });
          }
       });
 
-      // Update a single product
+      // Get a single product
       app.get("/products/:id", async (req, res) => {
          try {
             const product = await productsCollection.findOne({
                _id: new ObjectId(req.params.id),
             });
             if (!product) {
-               return res
-                  .status(404)
-                  .json({ error: "Product not found" });
+               return res.status(404).json({ error: "Product not found" });
             }
             res.json(product);
          } catch (error) {
@@ -249,88 +240,73 @@ async function run() {
       });
 
       // Category CRUD Endpoints
+
+      // Get all categories
       app.get("/categories", async (req, res) => {
          try {
             const categories = await categoriesCollection.find({}).toArray();
             res.json(categories);
          } catch (error) {
-            res
-               .status(500)
-               .json({ error: "Failed to fetch categories" });
+            res.status(500).json({ error: "Failed to fetch categories" });
          }
       });
 
-      app.post(
-         "/categories",
-         upload.single("image"),
-         async (req, res) => {
-            try {
-               const newCategory = {
-                  name: req.body.name,
-                  slug: req.body.slug,
-                  description: req.body.description,
-                  image: req.file ? `/uploads/${req.file.filename}` : null,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-               };
+      // Create a new category
+      app.post("/categories", upload.single("image"), async (req, res) => {
+         try {
+            const newCategory = {
+               name: req.body.name,
+               slug: req.body.slug,
+               description: req.body.description,
+               image: req.file ? `/uploads/${req.file.filename}` : null,
+               createdAt: new Date(),
+               updatedAt: new Date(),
+            };
 
-               const result = await categoriesCollection.insertOne(
-                  newCategory
-               );
-               res.status(201).json({
-                  ...newCategory,
-                  _id: result.insertedId,
-               });
-            } catch (error) {
-               res
-                  .status(400)
-                  .json({ error: "Category creation failed" });
-            }
+            const result = await categoriesCollection.insertOne(newCategory);
+            res.status(201).json({
+               ...newCategory,
+               _id: result.insertedId,
+            });
+         } catch (error) {
+            res.status(400).json({ error: "Category creation failed" });
          }
-      );
+      });
 
-      app.put(
-         "/categories/:id",
-         upload.single("image"),
-         async (req, res) => {
-            try {
-               const updateData = {
-                  ...req.body,
-                  updatedAt: new Date(),
-               };
+      // Update a category
+      app.put("/categories/:id", upload.single("image"), async (req, res) => {
+         try {
+            const updateData = {
+               ...req.body,
+               updatedAt: new Date(),
+            };
 
-               if (req.file) {
-                  updateData.image = `/uploads/${req.file.filename}`;
-               }
-
-               const result = await categoriesCollection.updateOne(
-                  { _id: new ObjectId(req.params.id) },
-                  { $set: updateData }
-               );
-
-               if (result.modifiedCount === 0) {
-                  return res
-                     .status(404)
-                     .json({ error: "Category not found" });
-               }
-               res.json({
-                  message: "Category updated successfully",
-               });
-            } catch (error) {
-               res.status(400).json({ error: "Update failed" });
+            if (req.file) {
+               updateData.image = `/uploads/${req.file.filename}`;
             }
-         }
-      );
 
+            const result = await categoriesCollection.updateOne(
+               { _id: new ObjectId(req.params.id) },
+               { $set: updateData }
+            );
+
+            if (result.modifiedCount === 0) {
+               return res.status(404).json({ error: "Category not found" });
+            }
+            res.json({ message: "Category updated successfully" });
+         } catch (error) {
+            res.status(400).json({ error: "Update failed" });
+         }
+      });
+
+      // Delete a category
       app.delete("/categories/:id", async (req, res) => {
          try {
             const result = await categoriesCollection.deleteOne({
                _id: new ObjectId(req.params.id),
             });
             if (result.deletedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Category not found" });
+               return res.status(404).json({ error: "Category not found" });
             }
             res.json({ message: "Category deleted successfully" });
          } catch (error) {
@@ -338,15 +314,21 @@ async function run() {
          }
       });
 
-      // Start Server
-      app.listen(port, () => {
-         console.log(`Server is running at http://localhost:${port}`);
-      });
-
-      console.log("Successfully connected to MongoDB!");
+      console.log("Successfully connected to MongoDB and routes are set up! http://localhost:5000");
    } catch (error) {
       console.error("Connection error:", error);
    }
 }
 
+// Initialize the connection and routes
 run().catch(console.error);
+
+if (require.main === module) {
+   const port = process.env.PORT || 5000;
+   app.listen(port, () =>
+      console.log(`Server is running on http://localhost:${port}`)
+   );
+}
+
+// Export the Express app wrapped in serverless-http for Vercel
+module.exports = serverless(app);
