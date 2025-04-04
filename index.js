@@ -329,6 +329,7 @@ if (require.main === module) {
       console.log(`Server is running on http://localhost:${port}`)
    );
 }
-
-// Export the Express app wrapped in serverless-http for Vercel
-module.exports = serverless(app);
+module.exports.handler = async (event, context) => {
+   context.callbackWaitsForEmptyEventLoop = false;
+   return serverless(app)(event, context);
+};
