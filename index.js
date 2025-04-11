@@ -67,6 +67,4 @@ async function run() {
 }
 
 run().catch(console.error);
-
-// Export the client object for use in other modules
 module.exports = { client };

@@ -1,6 +1,6 @@
 {
-  "name": "ecommerce-server-backend",
-  "version": "1.0.0",
+  "name": "ecommerce-backend",
+  "version": "2.2.0",
   "main": "index.js",
   "engines": {
     "node": "18.x"
