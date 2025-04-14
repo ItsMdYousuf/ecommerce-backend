@@ -12,14 +12,14 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-const corsConfige = {
-   "origin": "*",
-   "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
-   "preflightContinue": false,
-   "optionsSuccessStatus": 204
-}
+const corsConfig = {
+   origin: "*",
+   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+   preflightContinue: false,
+   optionsSuccessStatus: 204,
+};
 
-app.use(cors(corsConfige))
+app.use(cors(corsConfig));
 app.use(express.json());
 
 // MongoDB Connection
@@ -62,16 +62,21 @@ async function run() {
          res.sendFile(path.join(__dirname, "home.html"));
       });
 
-      // Start the server
-      app.listen(port, () => {
-         console.log(`Server is running at http://localhost:${port}`);
-      });
-
       console.log("Successfully connected to MongoDB!");
    } catch (error) {
       console.error("Connection error:", error);
    }
 }
 
+// Run database connection and setup
 run().catch(console.error);
-module.exports = { client };
+
+// If running locally, start the server
+if (process.env.NODE_ENV !== "production") {
+   app.listen(port, () => {
+      console.log(`Server is running at http://localhost:${port}`);
+   });
+}
+
+// Export the Express app as the default export
+module.exports = app;
