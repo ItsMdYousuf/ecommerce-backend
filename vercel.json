@@ -14,5 +14,11 @@
             "GET,HEAD,PUT,PATCH,POST,DELETE"
          ]
       }
+   ],
+   "rewrites": [
+      {
+         "source": "/",
+         "destination": "/api/index.js"
+      }
    ]
 }

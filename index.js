@@ -1,4 +1,5 @@
 // index.js - Main entry point
+
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
@@ -12,19 +13,18 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-const corsConfige = {
-   "origin": "*",
-   "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
-   "preflightContinue": false,
-   "optionsSuccessStatus": 204
-}
+const corsConfig = {
+   origin: "*",
+   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+   preflightContinue: false,
+   optionsSuccessStatus: 204,
+};
 
-app.use(cors())
+app.use(cors(corsConfig));
 app.use(express.json());
 
 // MongoDB Connection
 const uri = process.env.NEW_URL;
-
 const client = new MongoClient(uri, {
    serverApi: {
       version: ServerApiVersion.v1,
@@ -63,11 +63,6 @@ async function run() {
          res.sendFile(path.join(__dirname, "home.html"));
       });
 
-      // Start the server
-      app.listen(port, () => {
-         console.log(`Server is running at http://localhost:${port}`);
-      });
-
       console.log("Successfully connected to MongoDB!");
    } catch (error) {
       console.error("Connection error:", error);
@@ -75,4 +70,12 @@ async function run() {
 }
 
 run().catch(console.error);
+
+// Only start the listener if running locally
+if (process.env.NODE_ENV !== "production") {
+   app.listen(port, () => {
+      console.log(`Server is running at http://localhost:${port}`);
+   });
+}
+
 module.exports = app;
