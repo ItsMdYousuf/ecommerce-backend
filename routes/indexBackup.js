@@ -41,10 +41,10 @@ if (!fs.existsSync(uploadDir)) {
 app.use("/uploads", express.static(uploadDir)); // Serve static files
 
 // Import route modules
-const productRoutes = require("./routes/products");
-const orderRoutes = require("./routes/orders");
-const sliderRoutes = require("./routes/sliders");
-const categoryRoutes = require("./routes/categories");
+const productRoutes = require("./products");
+const orderRoutes = require("./orders");
+const sliderRoutes = require("./sliders");
+const categoryRoutes = require("./categories");
 
 async function run() {
    try {
