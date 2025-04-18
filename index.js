@@ -1,30 +1,44 @@
-// index.js - Main entry point
-const express = require("express");
-const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
-const dotenv = require("dotenv");
-const path = require("path");
-const fs = require("fs");
+const express = require('express');
+const cors = require('cors');
+const { MongoClient, ServerApiVersion } = require('mongodb');
+const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Middleware
-const corsConfige = {
-   "origin": "*",
-   "methods": "GET,HEAD,PUT,PATCH,POST,DELETE",
-   "preflightContinue": false,
-   "optionsSuccessStatus": 204
-}
+// Enable CORS
+app.use(cors({
+   origin: '*',
+   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+   preflightContinue: false,
+   optionsSuccessStatus: 204
+}));
 
-app.use(cors())
+// Parse JSON bodies
 app.use(express.json());
 
-// MongoDB Connection
-const uri = process.env.NEW_URL;
+// Ensure 'uploads' directory exists and serve it statically
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+   fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadDir));
 
+// Serve public assets
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Environment validation
+const uri = process.env.NEW_URL;
+if (!uri) {
+   console.error('Error: Missing MongoDB connection string (NEW_URL) in .env');
+   process.exit(1);
+}
+
+// MongoDB client
 const client = new MongoClient(uri, {
    serverApi: {
       version: ServerApiVersion.v1,
@@ -33,46 +47,41 @@ const client = new MongoClient(uri, {
    },
 });
 
-// Ensure 'uploads' directory exists
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-   fs.mkdirSync(uploadDir);
-}
-app.use("/uploads", express.static(uploadDir)); // Serve static files
-
-// Import route modules
-const productRoutes = require("./routes/products");
-const orderRoutes = require("./routes/orders");
-const sliderRoutes = require("./routes/sliders");
-const categoryRoutes = require("./routes/categories");
-
-async function run() {
+async function startServer() {
    try {
+      // Connect to MongoDB
       await client.connect();
-      const database = client.db("insertDB");
+      console.log('Successfully connected to MongoDB');
 
-      // Pass the database object to route modules
-      app.use("/products", productRoutes(database));
-      app.use("/orders", orderRoutes(database));
-      app.use("/sliders", sliderRoutes(database));
-      app.use("/categories", categoryRoutes(database));
+      const db = client.db('insertDB');
 
-      // Serve static files for the home page
-      app.use(express.static(path.join(__dirname, "public")));
-      app.get("/", (req, res) => {
-         res.sendFile(path.join(__dirname, "home.html"));
+      // Register routes with injected database
+      app.use('/products', require('./routes/products')(db));
+      app.use('/orders', require('./routes/orders')(db));
+      app.use('/sliders', require('./routes/sliders')(db));
+      app.use('/categories', require('./routes/categories')(db));
+
+      // Home route
+      app.get('/', (req, res) => {
+         res.sendFile(path.join(__dirname, 'public', 'home.html'));
       });
 
-      // Start the server
+      // Start listening
       app.listen(port, () => {
          console.log(`Server is running at http://localhost:${port}`);
       });
 
-      console.log("Successfully connected to MongoDB!");
    } catch (error) {
-      console.error("Connection error:", error);
+      console.error('Failed to start server:', error);
+      process.exit(1);
    }
 }
 
-run().catch(console.error);
-module.exports = app;
+startServer();
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+   console.log('\nGracefully shutting down');
+   await client.close();
+   process.exit(0);
+});
