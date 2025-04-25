@@ -59,18 +59,21 @@ async function startServer() {
       app.use('/products', require('./routes/products')(db));
       app.use('/orders', require('./routes/orders')(db));
       app.use('/sliders', require('./routes/sliders')(db));
-      // app.use('/categories', require('./routes/categories')(db));
-      const categoriesRouter = require('./routes/categories.js');
-      app.use('/categories', categoriesRouter(db));
+      const categoriesRouter = require('./routes/categories.js')(db);  //Initialize the router
+      app.use('/categories', categoriesRouter);
+
       // Home route
       app.get('/', (req, res) => {
          res.sendFile(path.join(__dirname, 'public', './home.html'));
       });
 
-      // Start listening
+      // Start listening (remove this for Vercel)
       app.listen(port, () => {
          console.log(`Server is running at http://localhost:${port}`);
       });
+
+      // Export the Express app for Vercel
+      module.exports = app;
 
    } catch (error) {
       console.error('Failed to start server:', error);
@@ -80,9 +83,4 @@ async function startServer() {
 
 startServer();
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-   console.log('\nGracefully shutting down');
-   await client.close();
-   process.exit(0);
-});
+

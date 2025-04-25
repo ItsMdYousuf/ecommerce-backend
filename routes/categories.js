@@ -37,86 +37,98 @@ const upload = multer({
 // End of Multer Config
 // -------------------
 
-module.exports = (database) => {
-   const categoriesCollection = database.collection("categories");
+let categoriesCollection; // Declare the collection outside
 
-   // Get all categories
-   router.get("/", async (req, res) => {
-      try {
-         const categories = await categoriesCollection.find({}).toArray();
-         res.json(categories);
-      } catch (error) {
-         res.status(500).json({ error: "Failed to fetch categories" });
+// Middleware to set the database connection
+router.use((req, res, next) => {
+   if (!categoriesCollection) {
+      //If the database connection is not initialized.
+      return res.status(500).send("Database connection not initialized");
+   }
+   next();
+});
+
+
+
+// Get all categories
+router.get("/", async (req, res) => {
+   try {
+      const categories = await categoriesCollection.find({}).toArray();
+      res.json(categories);
+   } catch (error) {
+      res.status(500).json({ error: "Failed to fetch categories" });
+   }
+});
+
+// Create a new category
+router.post("/", upload.single("image"), async (req, res) => {
+   try {
+      const newCategory = {
+         name: req.body.name,
+         slug: req.body.slug,
+         description: req.body.description,
+         image: req.file ? `/uploads/${req.file.filename}` : null,
+         createdAt: new Date(),
+         updatedAt: new Date(),
+      };
+
+      const result = await categoriesCollection.insertOne(newCategory);
+      // Fetch the newly inserted category
+      const insertedCategory = await categoriesCollection.findOne({
+         _id: result.insertedId,
+      });
+      res.status(201).json(insertedCategory);
+   } catch (error) {
+      res.status(400).json({ error: "Category creation failed" });
+   }
+});
+
+// Update an existing category
+router.put("/:id", upload.single("image"), async (req, res) => {
+   try {
+      const updateData = {
+         ...req.body,
+         updatedAt: new Date(),
+      };
+
+      if (req.file) {
+         updateData.image = `/uploads/${req.file.filename}`;
       }
-   });
 
-   // Create a new category
-   router.post("/", upload.single("image"), async (req, res) => {
-      try {
-         const newCategory = {
-            name: req.body.name,
-            slug: req.body.slug,
-            description: req.body.description,
-            image: req.file ? `/uploads/${req.file.filename}` : null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-         };
+      const result = await categoriesCollection.updateOne(
+         { _id: new ObjectId(req.params.id) },
+         { $set: updateData }
+      );
 
-         const result = await categoriesCollection.insertOne(newCategory);
-         // Fetch the newly inserted category
-         const insertedCategory = await categoriesCollection.findOne({
-            _id: result.insertedId,
-         });
-         res.status(201).json(insertedCategory);
-      } catch (error) {
-         res.status(400).json({ error: "Category creation failed" });
+      if (result.modifiedCount === 0) {
+         return res.status(404).json({ error: "Category not found" });
       }
-   });
+      // Fetch the updated category
+      const updatedCategory = await categoriesCollection.findOne({
+         _id: new ObjectId(req.params.id),
+      });
+      res.json(updatedCategory);
+   } catch (error) {
+      res.status(400).json({ error: "Update failed" });
+   }
+});
 
-   // Update an existing category
-   router.put("/:id", upload.single("image"), async (req, res) => {
-      try {
-         const updateData = {
-            ...req.body,
-            updatedAt: new Date(),
-         };
-
-         if (req.file) {
-            updateData.image = `/uploads/${req.file.filename}`;
-         }
-
-         const result = await categoriesCollection.updateOne(
-            { _id: new ObjectId(req.params.id) },
-            { $set: updateData }
-         );
-
-         if (result.modifiedCount === 0) {
-            return res.status(404).json({ error: "Category not found" });
-         }
-         // Fetch the updated category
-         const updatedCategory = await categoriesCollection.findOne({
-            _id: new ObjectId(req.params.id),
-         });
-         res.json(updatedCategory);
-      } catch (error) {
-         res.status(400).json({ error: "Update failed" });
+// Delete a category
+router.delete("/:id", async (req, res) => {
+   try {
+      const result = await categoriesCollection.deleteOne({
+         _id: new ObjectId(req.params.id),
+      });
+      if (result.deletedCount === 0) {
+         return res.status(404).json({ error: "Category not found" });
       }
-   });
+      res.json({ message: "Category deleted successfully" });
+   } catch (error) {
+      res.status(400).json({ error: "Deletion failed" });
+   }
+});
 
-   // Delete a category
-   router.delete("/:id", async (req, res) => {
-      try {
-         const result = await categoriesCollection.deleteOne({
-            _id: new ObjectId(req.params.id),
-         });
-         if (result.deletedCount === 0) {
-            return res.status(404).json({ error: "Category not found" });
-         }
-         res.json({ message: "Category deleted successfully" });
-      } catch (error) {
-         res.status(400).json({ error: "Deletion failed" });
-      }
-   });
-
+module.exports = (db) => {
+   categoriesCollection = db.collection("categories"); // Initialize the database connection
    return router;
 };
