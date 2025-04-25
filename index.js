@@ -60,7 +60,6 @@ async function startServer() {
       app.use('/orders', require('./routes/orders')(db));
       app.use('/sliders', require('./routes/sliders')(db));
       app.use('/categories', require('./categories')(db));
-
       // Home route
       app.get('/', (req, res) => {
          res.sendFile(path.join(__dirname, 'public', './home.html'));
