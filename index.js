@@ -60,7 +60,7 @@ async function startServer() {
       app.use('/orders', require('./routes/orders')(db));
       app.use('/sliders', require('./routes/sliders')(db));
       // app.use('/categories', require('./routes/categories')(db));
-      const categoriesRouter = require('./routes/categories');
+      const categoriesRouter = require('./routes/categories.js');
       app.use('/categories', categoriesRouter(db));
       // Home route
       app.get('/', (req, res) => {
