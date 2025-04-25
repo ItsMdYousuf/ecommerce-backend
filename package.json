@@ -1,13 +1,13 @@
 {
   "name": "ecommerce-backend",
   "version": "2.2.0",
-  "main": "main.js",
+  "main": "index.js",
   "engines": {
     "node": "18.x"
   },
   "scripts": {
-    "dev": "nodemon main.js",
-    "start": "node main.js",
+    "dev": "nodemon index.js",
+    "start": "node index.js",
     "build": "netlify deploy --prod",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
