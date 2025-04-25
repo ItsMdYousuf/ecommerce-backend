@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const uri = process.env.NEW_URL;
+const uri = process.env.MONGODB_URI || process.env.NEW_URL; // Use MONGODB_URI for Vercel
 const client = new MongoClient(uri, {
    serverApi: {
       version: ServerApiVersion.v1,
@@ -24,18 +24,17 @@ const client = new MongoClient(uri, {
    },
 });
 
-// Ensure 'uploads' directory exists
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-   fs.mkdirSync(uploadDir);
-}
-
 // -------------------
 // Multer Configuration
 // -------------------
+const uploadDir = path.join(process.cwd(), "uploads"); // Use process.cwd()
+if (!fs.existsSync(uploadDir)) {
+   fs.mkdirSync(uploadDir, { recursive: true }); // Create directory recursively
+}
+
 const storage = multer.diskStorage({
    destination: (req, file, cb) => {
-      cb(null, "uploads/");
+      cb(null, uploadDir);
    },
    filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
@@ -43,7 +42,6 @@ const storage = multer.diskStorage({
    },
 });
 
-// File filter for images only
 const fileFilter = (req, file, cb) => {
    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
@@ -55,21 +53,26 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
    storage: storage,
    fileFilter: fileFilter,
-   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+   limits: { fileSize: 5 * 1024 * 1024 },
 });
-
 // -------------------
 // End of Multer Config
 // -------------------
 
-// Serve static files for uploaded images (only once)
-app.use("/uploads", express.static(uploadDir));
+// Serve static files (Corrected for Vercel)
+app.use("/uploads", express.static(path.join(process.cwd(), 'uploads'), {
+   maxAge: '1d', // Add caching for better performance
+   setHeaders: (res, path) => {
+      if (express.static.mime.getType(path).startsWith('image/')) {
+         res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+      }
+   }
+}));
 
 // Async Function to Run Server
 async function run() {
    try {
       await client.connect();
-
       const database = client.db("insertDB");
       const productsCollection = database.collection("collectionProduct");
       const ordersCollection = database.collection("orders");
@@ -78,7 +81,7 @@ async function run() {
 
       // Serve home page and public static files
       app.get('/', (req, res) => {
-         res.sendFile(path.join(__dirname, 'public', './home.html'));
+         res.sendFile(path.join(process.cwd(), 'public', './home.html'));
       });
 
       app.get("/products", async (req, res) => {
@@ -110,16 +113,13 @@ async function run() {
             };
 
             const result = await slidersCollection.insertOne(newSlider);
-            // Fetch the newly inserted document
             const insertedSlider = await slidersCollection.findOne({
                _id: result.insertedId,
             });
             res.status(201).json(insertedSlider);
          } catch (error) {
             console.error("Slider upload error:", error);
-            res
-               .status(400)
-               .json({ error: error.message || "Bad request" });
+            res.status(400).json({ error: error.message || "Bad request" });
          }
       });
 
@@ -135,7 +135,7 @@ async function run() {
 
             // Delete associated image file correctly
             if (slider.image) {
-               const filename = path.basename(slider.image); // Get filename from URL
+               const filename = path.basename(slider.image);
                const imagePath = path.join(uploadDir, filename);
                fs.unlink(imagePath, (err) => {
                   if (err) console.error("Error deleting image:", err);
@@ -147,9 +147,7 @@ async function run() {
             });
 
             if (result.deletedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Slider not found" });
+               return res.status(404).json({ error: "Slider not found" });
             }
 
             res.json({ message: "Slider deleted successfully" });
@@ -186,9 +184,7 @@ async function run() {
             });
 
             if (result.deletedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Product not found" });
+               return res.status(404).json({ error: "Product not found" });
             }
             res.json({ message: "Product deleted successfully" });
          } catch (error) {
@@ -202,7 +198,7 @@ async function run() {
             const result = await productsCollection.findOneAndUpdate(
                { _id: new ObjectId(req.params.id) },
                { $set: { status: req.body.status } },
-               { returnDocument: 'after' } // returns the updated document
+               { returnDocument: 'after' }
             );
             if (!result.value) {
                return res.status(404).json({ message: "Product not found" });
@@ -220,9 +216,7 @@ async function run() {
                _id: new ObjectId(req.params.id),
             });
             if (!product) {
-               return res
-                  .status(404)
-                  .json({ error: "Product not found" });
+               return res.status(404).json({ error: "Product not found" });
             }
             res.json(product);
          } catch (error) {
@@ -262,24 +256,20 @@ async function run() {
                limit = 10,
             } = req.query;
 
-            // Build filter object
             const filter = {};
 
             if (status) filter.status = status;
             if (customerEmail) filter["customerInfo.email"] = customerEmail;
 
-            // Date filtering
             if (startDate || endDate) {
                filter.createdAt = {};
                if (startDate) filter.createdAt.$gte = new Date(startDate);
                if (endDate) filter.createdAt.$lte = new Date(endDate);
             }
 
-            // Pagination
             const skip = (parseInt(page) - 1) * parseInt(limit);
             const totalOrders = await ordersCollection.countDocuments(filter);
 
-            // Get orders with sorting (newest first)
             const orders = await ordersCollection
                .find(filter)
                .sort({ createdAt: -1 })
@@ -298,7 +288,7 @@ async function run() {
             res.status(500).json({ error: "Failed to fetch orders" });
          }
       });
-      // order router
+
       app.get("/orders/:id", async (req, res) => {
          try {
             const orderId = req.params.id;
@@ -314,10 +304,8 @@ async function run() {
             console.error("Error fetching order by ID", error);
             res.status(500).json({ error: "Internal server error" });
          }
-
       });
 
-      // Order stats endpoint
       app.get("/orders/stats", async (req, res) => {
          try {
             const totalOrders = await ordersCollection.countDocuments();
@@ -337,7 +325,6 @@ async function run() {
          }
       });
 
-      // Create a new order
       app.post("/orders", async (req, res) => {
          try {
             const orderData = {
@@ -347,7 +334,6 @@ async function run() {
                status: "pending",
             };
 
-            // Convert price values to numbers if cart exists
             if (orderData.cart) {
                orderData.cart = orderData.cart.map((item) => ({
                   ...item,
@@ -368,7 +354,6 @@ async function run() {
          }
       });
 
-      // Update order endpoint
       app.patch("/orders/:id", async (req, res) => {
          try {
             const { id } = req.params;
@@ -392,7 +377,6 @@ async function run() {
          }
       });
 
-      // New: Delete order endpoint
       app.delete("/orders/:id", async (req, res) => {
          try {
             const result = await ordersCollection.deleteOne({
@@ -455,9 +439,7 @@ async function run() {
             );
 
             if (result.modifiedCount === 0) {
-               return res
-                  .status(404)
-                  .json({ error: "Category not found" });
+               return res.status(404).json({ error: "Category not found" });
             }
             res.json({
                message: "Category updated successfully",
@@ -481,7 +463,7 @@ async function run() {
          }
       });
 
-      // Start Server
+      // Start Server (outside the async function)
       app.listen(port, () => {
          console.log(`Server is running at http://localhost:${port}`);
       });
@@ -489,6 +471,10 @@ async function run() {
       console.log("Successfully connected to MongoDB!");
    } catch (error) {
       console.error("Connection error:", error);
+      //  Don't call app.listen here.  It should only be called once.
+      //  app.listen(port, () => {
+      //    console.log(`Server is running at http://localhost:${port}`);
+      //  });
    }
 }
 
