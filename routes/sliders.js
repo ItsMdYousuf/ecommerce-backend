@@ -1,4 +1,3 @@
-// routes/sliders.js
 const express = require("express");
 const { ObjectId } = require("mongodb");
 const multer = require("multer");
@@ -25,7 +24,7 @@ const fileFilter = (req, file, cb) => {
    if (file.mimetype.startsWith("image/")) {
       cb(null, true);
    } else {
-      cb(new Error("Only image files are allowed!"), false);
+      cb(null, false); // Changed from new Error to false for multer's error handling
    }
 };
 
@@ -56,9 +55,17 @@ module.exports = (database) => {
    // Upload slider image and create slider
    router.post("/", upload.single("sliderImage"), async (req, res) => {
       try {
+         // Check for file and title
+         if (!req.file) {
+            return res.status(400).json({ error: "Image file is required" });
+         }
+         if (!req.body.title) {
+            return res.status(400).json({ error: "Title is required" });
+         }
+
          const newSlider = {
-            ...req.body,
-            image: req.file ? `/uploads/${req.file.filename}` : null,
+            title: req.body.title, // Ensure title is included
+            image: `/uploads/${req.file.filename}`,
          };
          const result = await slidersCollection.insertOne(newSlider);
          // Fetch the newly inserted document
@@ -68,35 +75,47 @@ module.exports = (database) => {
          res.status(201).json(insertedSlider);
       } catch (error) {
          console.error("Slider upload error:", error);
-         res.status(400).json({ error: error.message || "Bad request" });
+         // Handle Multer errors specifically
+         if (error instanceof multer.MulterError) {
+            return res.status(400).json({ error: error.message });
+         }
+         res.status(500).json({ error: "Internal server error" }); // General error
       }
    });
 
    // Delete a slider
    router.delete("/:id", async (req, res) => {
       try {
+         const sliderId = req.params.id;
+         if (!ObjectId.isValid(sliderId)) {
+            return res.status(400).json({ error: "Invalid slider ID" });
+         }
+
          const slider = await slidersCollection.findOne({
-            _id: new ObjectId(req.params.id),
+            _id: new ObjectId(sliderId),
          });
 
-         if (!slider)
+         if (!slider) {
             return res.status(404).json({ error: "Slider not found" });
+         }
 
          // Delete associated image file correctly
          if (slider.image) {
-            const filename = path.basename(slider.image); // Get filename from URL
-            const imagePath = path.join(__dirname, 'uploads', filename); // Corrected path
+            const imagePath = path.join(__dirname, slider.image); // Use stored path
             fs.unlink(imagePath, (err) => {
-               if (err) console.error("Error deleting image:", err);
+               if (err) {
+                  console.error("Error deleting image:", err);
+                  // Don't block deletion of DB entry if image deletion fails.
+               }
             });
          }
 
          const result = await slidersCollection.deleteOne({
-            _id: new ObjectId(req.params.id),
+            _id: new ObjectId(sliderId),
          });
 
          if (result.deletedCount === 0) {
-            return res.status(404).json({ error: "Slider not found" });
+            return res.status(404).json({ error: "Slider not found" }); // Redundant, but safe
          }
 
          res.json({ message: "Slider deleted successfully" });
