@@ -6,33 +6,41 @@ const fs = require("fs");
 
 const router = express.Router();
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+// Multer storage configuration
 const storage = multer.diskStorage({
-   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-   filename: (req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).substring(2)}${path.extname(file.originalname)}`),
+   destination: (_, __, cb) => cb(null, UPLOADS_DIR),
+   filename: (_, file, cb) => {
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2)}${path.extname(file.originalname)}`;
+      cb(null, uniqueName);
+   },
 });
 
+// Multer middleware with validation
 const upload = multer({
    storage,
-   fileFilter: (req, file, cb) => file.mimetype.startsWith("image/") ? cb(null, true) : cb(new Error("Only images allowed"), false),
-   limits: { fileSize: 5 * 1024 * 1024 },
+   fileFilter: (_, file, cb) => {
+      file.mimetype.startsWith("image/") ? cb(null, true) : cb(new Error("Only images allowed"));
+   },
+   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 });
 
 module.exports = (db) => {
    const sliders = db.collection("sliders");
 
-   router.get("/", async (req, res) => {
+   // Get all sliders
+   router.get("/", async (_, res) => {
       try {
          const data = await sliders.find().toArray();
          res.json(data);
-      } catch (err) {
+      } catch {
          res.status(500).json({ error: "Server error" });
       }
    });
 
-   router.post("/", upload.single("sliderImage"), async (req, res) => {
+   // Create new slider
+   router.post("/", upload.single("image"), async (req, res) => {
       const { file, body: { title } } = req;
       if (!file || !title) {
          if (file) fs.unlink(file.path, () => { });
@@ -44,12 +52,13 @@ module.exports = (db) => {
          const result = await sliders.insertOne(slider);
          const created = await sliders.findOne({ _id: result.insertedId });
          res.status(201).json(created);
-      } catch (err) {
+      } catch {
          fs.unlink(file.path, () => { });
          res.status(500).json({ error: "Insert failed" });
       }
    });
 
+   // Delete slider by ID
    router.delete("/:id", async (req, res) => {
       const { id } = req.params;
       if (!ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
